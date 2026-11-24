@@ -1,1 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3-Level Plane Game</title>
+  <style>
+    body {
+      margin: 0;
+      background-color: #111;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      font-family: Arial, sans-serif;
+      color: white;
+      overflow: hidden;
+    }
+    canvas {
+      border: 3px solid #444;
+      background-color: #1e90ff;
+      box-shadow: 0 0 20px rgba(0,0,0,0.8);
+    }
+  </style>
+</head>
+<body>
+
+<canvas id="gameCanvas" width="800" height="500"></canvas>
+
+<script>
+  const canvas = document.getElementById("gameCanvas");
+  const ctx = canvas.getContext("2d");
+
+  // Game State
+  let gameState = "PLAY"; // PLAY, GAMEOVER, WIN
+  let score = 0;
+  let level = 1;
+  let frameCount = 0;
+
+  // Level Configurations (Sky color, enemy speed, spawn rate, score needed to advance)
+  const levels = {
+    1: { sky: "#3498db", enemySpeed: 3, spawnRate: 90, nextScore: 100, name: "Level 1: Clear Skies" },
+    2: { sky: "#e67e22", enemySpeed: 5, spawnRate: 60, nextScore: 250, name: "Level 2: Sunset Storm" },
+    3: { sky: "#2c3e50", enemySpeed: 7, spawnRate: 40, nextScore: 500, name: "Level 3: Midnight Ace" }
+  };
+
+  // Player Plane
+  const player = {
+    x: 60,
+    y: 220,
+    width: 50,
+    height: 30,
+    speed: 6
+  };
+
+  let bullets = [];
+  let enemies = [];
+  let clouds = [];
+  const keys = {};
+
+  // Controls
+  window.addEventListener("keydown", (e) => {
+    keys[e.code] = true;
+    if (e.code === "Space" && gameState === "PLAY") {
+      shoot();
+    }
+    if (e.code === "KeyR" && (gameState === "GAMEOVER" || gameState === "WIN")) {
+      resetGame();
+    }
+  });
+
+  window.addEventListener("keyup", (e) => {
+    keys[e.code] = false;
+  });
+
+  function shoot() {
+    bullets.push({
+      x: player.x + player.width,
+      y: player.y + player.height / 2 - 3,
+      width: 12,
+      height: 6,
+      speed: 10
+    });
+  }
+
+  function spawnEnemy() {
+    const size = 35;
+    enemies.push({
+      x: canvas.width,
+      y: Math.random() * (canvas.height - size),
+      width: size,
+      height: size,
+      speed: levels[level].enemySpeed
+    });
+  }
+
+  function spawnCloud() {
+    clouds.push({
+      x: canvas.width,
+      y: Math.random() * canvas.height,
+      width: 60 + Math.random() * 40,
+      height: 20 + Math.random() * 15,
+      speed: 1 + Math.random()
+    });
+  }
+
+  function resetGame() {
+    score = 0;
+    level = 1;
+    player.x = 60;
+    player.y = 220;
+    bullets = [];
+    enemies = [];
+    gameState = "PLAY";
+  }
+
+  function update() {
+    if (gameState !== "PLAY") return;
+
+    frameCount++;
+
+    // Move Player
+    if ((keys["ArrowUp"] || keys["KeyW"]) && player.y > 0) player.y -= player.speed;
+    if ((keys["ArrowDown"] || keys["KeyS"]) && player.y + player.height < canvas.height) player.y += player.speed;
+    if ((keys["ArrowLeft"] || keys["KeyA"]) && player.x > 0) player.x -= player.speed;
+    if ((keys["ArrowRight"] || keys["KeyD"]) && player.x + player.width < canvas.width) player.x += player.speed;
+
+    // Background Clouds
+    if (frameCount % 100 === 0) spawnCloud();
+    clouds.forEach((c, i) => {
+      c.x -= c.speed;
+      if (c.x + c.width < 0) clouds.splice(i, 1);
+    });
+
+    // Move Bullets
+    bullets.forEach((b, i) => {
+      b.x += b.speed;
+      if (b.x > canvas.width) bullets.splice(i, 1);
+    });
+
+    // Spawn & Move Enemies
+    if (frameCount % levels[level].spawnRate === 0) {
+      spawnEnemy();
+    }
+
+    enemies.forEach((enemy, eIndex) => {
+      enemy.x -= enemy.speed;
+
+      // Remove off-screen enemies
+      if (enemy.x + enemy.width < 0) {
+        enemies.splice(eIndex, 1);
+      }
+
+      // Check Collision: Player vs Enemy
+      if (
+        player.x < enemy.x + enemy.width &&
+        player.x + player.width > enemy.x &&
+        player.y < enemy.y + enemy.height &&
+        player.y + player.height > enemy.y
+      ) {
+        gameState = "GAMEOVER";
+      }
+
+      // Check Collision: Bullet vs Enemy
+      bullets.forEach((bullet, bIndex) => {
+        if (
+          bullet.x < enemy.x + enemy.width &&
+          bullet.x + bullet.width > enemy.x &&
+          bullet.y < enemy.y + enemy.height &&
+          bullet.y + bullet.height > enemy.y
+        ) {
+          enemies.splice(eIndex, 1);
+          bullets.splice(bIndex, 1);
+          score += 10;
+          checkLevelProgress();
+        }
+      });
+    });
+  }
+
+  function checkLevelProgress() {
+    if (level === 1 && score >= levels[1].nextScore) {
+      level = 2;
+    } else if (level === 2 && score >= levels[2].nextScore) {
+      level = 3;
+    } else if (level === 3 && score >= levels[3].nextScore) {
+      gameState = "WIN";
+    }
+  }
+
+  function drawPlane(x, y, w, h, color, isPlayer) {
+    ctx.fillStyle = color;
+    // Fuselage
+    ctx.fillRect(x, y + h * 0.3, w, h * 0.4);
+    // Wings
+    if (isPlayer) {
+      ctx.fillRect(x + w * 0.3, y, w * 0.3, h);
+      // Nose
+      ctx.fillStyle = "#f1c40f";
+      ctx.fillRect(x + w - 5, y + h * 0.35, 8, h * 0.3);
+    } else {
+      ctx.fillRect(x + w * 0.4, y, w * 0.3, h);
+    }
+  }
+
+  function draw() {
+    // Sky Background
+    ctx.fillStyle = levels[level].sky;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Draw Clouds
+    ctx.fillStyle = "rgba(255, 255, 255, 0.3)";
+    clouds.forEach(c => {
+      ctx.fillRect(c.x, c.y, c.width, c.height);
+    });
+
+    // Draw Player
+    drawPlane(player.x, player.y, player.width, player.height, "#ecf0f1", true);
+
+    // Draw Bullets
+    ctx.fillStyle = "#f1c40f";
+    bullets.forEach(b => ctx.fillRect(b.x, b.y, b.width, b.height));
+
+    // Draw Enemies
+    enemies.forEach(e => {
+      drawPlane(e.x, e.y, e.width, e.height, "#e74c3c", false);
+    });
+
+    // Draw HUD (Score & Level)
+    ctx.fillStyle = "white";
+    ctx.font = "bold 18px Arial";
+    ctx.fillText(`Score: ${score} / ${levels[level].nextScore}`, 20, 30);
+    ctx.fillText(levels[level].name, canvas.width - 240, 30);
+
+    // Game Over / Win Screens
+    if (gameState === "GAMEOVER" || gameState === "WIN") {
+      ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.fillStyle = gameState === "WIN" ? "#2ecc71" : "#e74c3c";
+      ctx.font = "bold 48px Arial";
+      ctx.textAlign = "center";
+      ctx.fillText(gameState === "WIN" ? "YOU WIN!" : "GAME OVER", canvas.width / 2, canvas.height / 2 - 20);
+
+      ctx.fillStyle = "white";
+      ctx.font = "22px Arial";
+      ctx.fillText(`Final Score: ${score} — Press 'R' to Restart`, canvas.width / 2, canvas.height / 2 + 30);
+      ctx.textAlign = "left";
+    }
+  }
+
+  function loop() {
+    update();
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  loop();
+</script>
+</body>
+</html>
 
